@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 shared = { path = "../shared" }
+tokio = { version = "1.48", features = ["full"] }
