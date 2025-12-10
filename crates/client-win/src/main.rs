@@ -1,6 +1,6 @@
 fn main() {
     println!(
-        "client (Windows) stub online; shared check: {}",
-        shared::add(4, 4)
+        "client (Windows) stub online; protocol v{}",
+        shared::protocol::PROTOCOL_VERSION
     );
 }

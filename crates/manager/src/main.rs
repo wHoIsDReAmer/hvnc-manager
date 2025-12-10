@@ -1,3 +1,6 @@
 fn main() {
-    println!("manager stub online; shared check: {}", shared::add(2, 2));
+    println!(
+        "manager stub online; protocol v{}",
+        shared::protocol::PROTOCOL_VERSION
+    );
 }
