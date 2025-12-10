@@ -52,9 +52,7 @@ pub fn decode_datagram(bytes: &[u8]) -> bincode::Result<WireMessage> {
 pub fn enforce_max_buffer(buf: &mut BytesMut, max_len: usize) -> io::Result<()> {
     if buf.len() > max_len {
         buf.clear();
-        return Err(io::Error::other(
-            "buffer overflow protection triggered",
-        ));
+        return Err(io::Error::other("buffer overflow protection triggered"));
     }
     Ok(())
 }

@@ -7,6 +7,12 @@ edition = "2024"
 shared = { path = "../shared" }
 tokio = { version = "1.48", features = ["full"] }
 quinn = "0.11"
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+] }
+futures = "0.3"
 anyhow = "1.0"
 bytes = "1.11"
 tracing = "0.1"
