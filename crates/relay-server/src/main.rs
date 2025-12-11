@@ -8,6 +8,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use config::ServerConfig;
 use session::SessionManager;
+use tokio::signal;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -28,9 +29,42 @@ async fn main() -> Result<()> {
     );
 
     let sessions = Arc::new(SessionManager::new());
-    quic::run_quic(cfg, sessions).await?;
 
+    tokio::select! {
+        result = quic::run_quic(cfg, sessions) => {
+            result?;
+        }
+        _ = shutdown_signal() => {
+            info!("Shutdown signal received, stopping server...");
+        }
+    }
+
+    info!("Server stopped gracefully");
     Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 fn init_tracing() {
