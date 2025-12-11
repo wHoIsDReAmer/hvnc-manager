@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use anyhow::Result;
-use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
+use slint::{Image, Model, Rgba8Pixel, SharedPixelBuffer};
 use tokio::sync::mpsc;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -154,6 +154,37 @@ fn handle_network_event(ui: &MainWindow, event: NetworkEvent) {
                 })
                 .collect();
             ui.set_clients(slint::ModelRc::new(slint::VecModel::from(model)));
+        }
+        NetworkEvent::ClientStatusChanged {
+            client_id,
+            online,
+            info,
+        } => {
+            // Get current clients and update
+            let current = ui.get_clients();
+            let mut clients: Vec<ClientEntry> = current.iter().collect();
+
+            if online {
+                if let Some(client_info) = info {
+                    // Remove if exists, then add
+                    clients.retain(|c| c.client_id != client_id as i32);
+                    clients.push(ClientEntry {
+                        client_id: client_info.client_id as i32,
+                        node_name: client_info.node_name.into(),
+                        is_busy: client_info.is_busy,
+                    });
+                }
+            } else {
+                // Remove from list
+                clients.retain(|c| c.client_id != client_id as i32);
+            }
+
+            ui.set_clients(slint::ModelRc::new(slint::VecModel::from(clients)));
+            info!(
+                "Client {} {}",
+                client_id,
+                if online { "online" } else { "offline" }
+            );
         }
         NetworkEvent::SessionStarted {
             client_id,

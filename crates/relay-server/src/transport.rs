@@ -7,6 +7,7 @@ use shared::protocol::{
 use shared::{LinkSide, encode_datagram, encode_to_vec};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::io::AsyncWriteExt;
 use tracing::{debug, info, warn};
 
 use crate::session::SessionManager;
@@ -51,6 +52,7 @@ impl PeerHandle {
         let mut guard = self.control_tx.lock().await;
         let bytes = encode_to_vec(msg)?;
         guard.write_all(&bytes).await?;
+        guard.flush().await?; // Ensure data is sent immediately
         Ok(())
     }
 
@@ -73,15 +75,29 @@ pub async fn control_loop(
     sessions: Arc<SessionManager>,
 ) -> Result<()> {
     let mut buf = bytes::BytesMut::with_capacity(16 * 1024);
+    let peer_id = peer.get_peer_id();
+    debug!("control_loop started for {:?}", peer_id);
 
     loop {
-        let chunk = match recv.read_chunk(2048, true).await? {
-            Some(c) => c.bytes,
-            None => break,
+        let chunk = match recv.read_chunk(2048, true).await {
+            Ok(Some(c)) => c.bytes,
+            Ok(None) => {
+                debug!("control_loop: stream ended (EOF) for {:?}", peer_id);
+                break;
+            }
+            Err(e) => {
+                warn!("control_loop: read error for {:?}: {}", peer_id, e);
+                break;
+            }
         };
         buf.extend_from_slice(&chunk);
 
         while let Some(msg) = shared::decode_from_buf(&mut buf)? {
+            debug!(
+                "control_loop: received message {:?} from {:?}",
+                std::mem::discriminant(&msg),
+                peer_id
+            );
             handle_message(&peer, &sessions, msg).await?;
         }
     }
