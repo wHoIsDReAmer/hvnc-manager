@@ -158,6 +158,25 @@ impl NetworkManager {
                 .await;
         }
 
+        // Spawn datagram receiver for frames
+        let event_tx_dg = self.event_tx.clone();
+        let conn_for_dg = connection.clone();
+        tokio::spawn(async move {
+            while let Ok(data) = conn_for_dg.read_datagram().await {
+                if let Ok(msg) = shared::decode_datagram(&data)
+                    && let WireMessage::Frame(frame) = msg
+                {
+                    let _ = event_tx_dg
+                        .send(NetworkEvent::FrameReceived {
+                            width: frame.region.width,
+                            height: frame.region.height,
+                            data: frame.data.into_vec(),
+                        })
+                        .await;
+                }
+            }
+        });
+
         // Spawn message receiver with remaining buffer
         let event_tx = self.event_tx.clone();
         tokio::spawn(async move {

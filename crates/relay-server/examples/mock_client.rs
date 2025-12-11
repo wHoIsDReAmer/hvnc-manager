@@ -171,12 +171,9 @@ async fn run_client(relay_addr: &str, auth_token: &str) -> Result<()> {
             data: serde_bytes::ByteBuf::from(frame_data),
         });
 
-        let bytes = shared::encode_to_vec(&frame)?;
-        {
-            let mut guard = send_clone.lock().await;
-            if guard.write_all(&bytes).await.is_err() {
-                break;
-            }
+        let bytes = shared::encode_datagram(&frame)?;
+        if connection.send_datagram(bytes.into()).is_err() {
+            break;
         }
 
         frame_number += 1;
