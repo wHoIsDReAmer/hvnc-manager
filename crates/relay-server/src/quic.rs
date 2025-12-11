@@ -18,15 +18,19 @@ pub async fn run_quic(cfg: ServerConfig, sessions: Arc<SessionManager>) -> Resul
     let endpoint = quinn_server(cfg.quic_addr).context("start quic server")?;
     info!("QUIC listening on {}", cfg.quic_addr);
 
+    let cfg = Arc::new(cfg);
     let mut tasks = JoinSet::new();
+
     while let Some(incoming) = endpoint.accept().await {
         let sessions = Arc::clone(&sessions);
+        let cfg = Arc::clone(&cfg);
         tasks.spawn(async move {
-            if let Err(e) = handle_connection(incoming, sessions).await {
+            if let Err(e) = handle_connection(incoming, cfg, sessions).await {
                 error!("quic conn error: {e}");
             }
         });
     }
+
     while let Some(res) = tasks.join_next().await {
         if let Err(e) = res {
             error!("task failed: {e}");
@@ -36,7 +40,11 @@ pub async fn run_quic(cfg: ServerConfig, sessions: Arc<SessionManager>) -> Resul
     Ok(())
 }
 
-async fn handle_connection(incoming: quinn::Incoming, sessions: Arc<SessionManager>) -> Result<()> {
+async fn handle_connection(
+    incoming: quinn::Incoming,
+    cfg: Arc<ServerConfig>,
+    sessions: Arc<SessionManager>,
+) -> Result<()> {
     let connection = incoming.await?;
     let remote = connection.remote_address();
     info!("QUIC peer connected: {}", remote);
@@ -48,31 +56,20 @@ async fn handle_connection(incoming: quinn::Incoming, sessions: Arc<SessionManag
     let hello = read_hello(&mut recv).await?;
 
     if hello.version != PROTOCOL_VERSION {
-        let ack = HelloAck {
-            accepted: false,
-            client_id: None,
-            reason: Some(format!(
+        send_reject(
+            send,
+            format!(
                 "Version mismatch: expected {}, got {}",
                 PROTOCOL_VERSION, hello.version
-            )),
-            negotiated_version: PROTOCOL_VERSION,
-        };
-        let bytes = shared::encode_to_vec(&WireMessage::HelloAck(ack))?;
-        let mut send = send;
-        send.write_all(&bytes).await?;
+            ),
+        )
+        .await?;
         return Ok(());
     }
 
-    if hello.auth_token.is_empty() {
-        let ack = HelloAck {
-            accepted: false,
-            client_id: None,
-            reason: Some("Authentication required".to_string()),
-            negotiated_version: PROTOCOL_VERSION,
-        };
-        let bytes = shared::encode_to_vec(&WireMessage::HelloAck(ack))?;
-        let mut send = send;
-        send.write_all(&bytes).await?;
+    if !cfg.validate_token(&hello.auth_token) {
+        warn!("Authentication failed from {}", remote);
+        send_reject(send, "Invalid or missing auth token".to_string()).await?;
         return Ok(());
     }
 
@@ -84,6 +81,18 @@ async fn handle_connection(incoming: quinn::Incoming, sessions: Arc<SessionManag
             Ok(())
         }
     }
+}
+
+async fn send_reject(mut send: quinn::SendStream, reason: String) -> Result<()> {
+    let ack = HelloAck {
+        accepted: false,
+        client_id: None,
+        reason: Some(reason),
+        negotiated_version: PROTOCOL_VERSION,
+    };
+    let bytes = shared::encode_to_vec(&WireMessage::HelloAck(ack))?;
+    send.write_all(&bytes).await?;
+    Ok(())
 }
 
 async fn handle_client_connection(

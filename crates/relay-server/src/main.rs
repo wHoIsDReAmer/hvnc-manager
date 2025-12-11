@@ -14,9 +14,20 @@ use tracing_subscriber::EnvFilter;
 #[tokio::main]
 async fn main() -> Result<()> {
     init_tracing();
-    let cfg = ServerConfig::default();
-    let sessions = Arc::new(SessionManager::new());
 
+    let cfg = if std::env::var("RELAY_AUTH_TOKEN").is_ok() {
+        ServerConfig::from_env()
+    } else {
+        info!("Using default dev config (set RELAY_AUTH_TOKEN for production)");
+        ServerConfig::default()
+    };
+
+    info!(
+        "Auth token configured: {}...",
+        &cfg.auth_token[..cfg.auth_token.len().min(8)]
+    );
+
+    let sessions = Arc::new(SessionManager::new());
     quic::run_quic(cfg, sessions).await?;
 
     Ok(())
