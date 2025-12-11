@@ -16,6 +16,7 @@ use shared::protocol::{
     FrameFormat, FrameSegment, Hello, HelloAck, InputEvent, PROTOCOL_VERSION, Rect, Role,
     SessionEnded, SessionStarted, WireMessage,
 };
+use tokio::io::AsyncWriteExt;
 use tokio::time::interval;
 use tracing::{info, warn};
 
@@ -171,8 +172,14 @@ async fn run_client(relay_addr: &str, auth_token: &str) -> Result<()> {
             data: serde_bytes::ByteBuf::from(frame_data),
         });
 
-        let bytes = shared::encode_datagram(&frame)?;
-        if connection.send_datagram(bytes.into()).is_err() {
+        let bytes = shared::encode_to_vec(&frame)?;
+        let mut guard = send_clone.lock().await;
+        if let Err(e) = guard.write_all(&bytes).await {
+            warn!("Frame send failed: {}", e);
+            break;
+        }
+        if let Err(e) = guard.flush().await {
+            warn!("Frame flush failed: {}", e);
             break;
         }
 
