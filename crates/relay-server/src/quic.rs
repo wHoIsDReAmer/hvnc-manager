@@ -249,7 +249,7 @@ fn quinn_server(addr: std::net::SocketAddr) -> Result<Endpoint> {
     let certified_key = rcgen::generate_simple_self_signed(vec!["localhost".into()])?;
     let cert_der = CertificateDer::from(certified_key.cert.der().to_vec());
     let key_der = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
-        certified_key.key_pair.serialize_der(),
+        certified_key.signing_key.serialize_der(),
     ));
 
     let mut server_config = quinn::ServerConfig::with_single_cert(vec![cert_der], key_der)?;

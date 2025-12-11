@@ -7,7 +7,7 @@ edition = "2024"
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 serde_repr = { workspace = true }
-bincode = { workspace = true }
+bitcode = { workspace = true }
 bytes = { workspace = true }
 
 [dev-dependencies]

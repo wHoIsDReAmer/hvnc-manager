@@ -1,27 +1,22 @@
 use std::io;
 
-use bincode::{DefaultOptions, Options};
 use bytes::{Buf, BufMut, BytesMut};
 
 use crate::protocol::message::WireMessage;
 
 const LEN_BYTES: usize = 4;
 
-fn bincode_opts() -> impl Options {
-    DefaultOptions::new()
-        .with_fixint_encoding()
-        .allow_trailing_bytes()
-}
+pub type CodecResult<T> = Result<T, bitcode::Error>;
 
-pub fn encode_to_vec(msg: &WireMessage) -> bincode::Result<Vec<u8>> {
-    let payload = bincode_opts().serialize(msg)?;
+pub fn encode_to_vec(msg: &WireMessage) -> CodecResult<Vec<u8>> {
+    let payload = bitcode::serialize(msg)?;
     let mut out = Vec::with_capacity(LEN_BYTES + payload.len());
     out.put_u32_le(payload.len() as u32);
     out.extend_from_slice(&payload);
     Ok(out)
 }
 
-pub fn decode_from_buf(buf: &mut BytesMut) -> bincode::Result<Option<WireMessage>> {
+pub fn decode_from_buf(buf: &mut BytesMut) -> CodecResult<Option<WireMessage>> {
     if buf.len() < LEN_BYTES {
         return Ok(None);
     }
@@ -31,16 +26,16 @@ pub fn decode_from_buf(buf: &mut BytesMut) -> bincode::Result<Option<WireMessage
     }
     buf.advance(LEN_BYTES);
     let payload = buf.split_to(len);
-    let msg = bincode_opts().deserialize::<WireMessage>(&payload)?;
+    let msg = bitcode::deserialize(&payload)?;
     Ok(Some(msg))
 }
 
-pub fn encode_datagram(msg: &WireMessage) -> bincode::Result<Vec<u8>> {
-    bincode_opts().serialize(msg)
+pub fn encode_datagram(msg: &WireMessage) -> CodecResult<Vec<u8>> {
+    bitcode::serialize(msg)
 }
 
-pub fn decode_datagram(bytes: &[u8]) -> bincode::Result<WireMessage> {
-    bincode_opts().deserialize(bytes)
+pub fn decode_datagram(bytes: &[u8]) -> CodecResult<WireMessage> {
+    bitcode::deserialize(bytes)
 }
 
 pub fn enforce_max_buffer(buf: &mut BytesMut, max_len: usize) -> io::Result<()> {
