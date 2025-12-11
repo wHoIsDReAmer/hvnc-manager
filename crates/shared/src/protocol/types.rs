@@ -1,16 +1,25 @@
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
-/// Protocol version negotiated during handshake.
 pub const PROTOCOL_VERSION: u16 = 1;
 
-/// Session identifier allocated by the relay server.
 pub type SessionId = u64;
-
-/// Milliseconds since Unix epoch (UTC).
+pub type ClientId = u64;
 pub type TimestampMs = u64;
 
-/// Actor role sent in the initial hello.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClientInfo {
+    pub client_id: ClientId,
+    pub node_name: String,
+    pub connected_at: TimestampMs,
+    pub is_busy: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerInfo {
+    pub node_name: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
 pub enum Role {
@@ -19,7 +28,6 @@ pub enum Role {
     Relay = 3,
 }
 
-/// Result codes used in error replies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
 #[repr(u16)]
 pub enum ErrorCode {
@@ -30,7 +38,6 @@ pub enum ErrorCode {
     InvalidMessage = 4,
 }
 
-/// A rectangular region in screen coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rect {
     pub x: u32,
@@ -39,7 +46,6 @@ pub struct Rect {
     pub height: u32,
 }
 
-/// Frame buffer pixel format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
 pub enum FrameFormat {

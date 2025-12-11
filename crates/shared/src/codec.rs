@@ -13,7 +13,6 @@ fn bincode_opts() -> impl Options {
         .allow_trailing_bytes()
 }
 
-/// Encode a message for stream transport (length-prefixed, little-endian u32).
 pub fn encode_to_vec(msg: &WireMessage) -> bincode::Result<Vec<u8>> {
     let payload = bincode_opts().serialize(msg)?;
     let mut out = Vec::with_capacity(LEN_BYTES + payload.len());
@@ -22,8 +21,6 @@ pub fn encode_to_vec(msg: &WireMessage) -> bincode::Result<Vec<u8>> {
     Ok(out)
 }
 
-/// Try to decode a message from a buffer that may hold partial frames.
-/// Returns Ok(Some(msg)) when a full frame is consumed, Ok(None) if not enough data.
 pub fn decode_from_buf(buf: &mut BytesMut) -> bincode::Result<Option<WireMessage>> {
     if buf.len() < LEN_BYTES {
         return Ok(None);
@@ -38,17 +35,14 @@ pub fn decode_from_buf(buf: &mut BytesMut) -> bincode::Result<Option<WireMessage
     Ok(Some(msg))
 }
 
-/// Encode for datagram transport (no length prefix).
 pub fn encode_datagram(msg: &WireMessage) -> bincode::Result<Vec<u8>> {
     bincode_opts().serialize(msg)
 }
 
-/// Decode a single datagram payload.
 pub fn decode_datagram(bytes: &[u8]) -> bincode::Result<WireMessage> {
     bincode_opts().deserialize(bytes)
 }
 
-/// Drain and discard bytes if the buffer grows too large (simple DoS guard).
 pub fn enforce_max_buffer(buf: &mut BytesMut, max_len: usize) -> io::Result<()> {
     if buf.len() > max_len {
         buf.clear();

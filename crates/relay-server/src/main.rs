@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use config::ServerConfig;
-use session::SessionMap;
+use session::SessionManager;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -15,7 +15,7 @@ use tracing_subscriber::EnvFilter;
 async fn main() -> Result<()> {
     init_tracing();
     let cfg = ServerConfig::default();
-    let sessions = Arc::new(SessionMap::new());
+    let sessions = Arc::new(SessionManager::new());
 
     quic::run_quic(cfg, sessions).await?;
 

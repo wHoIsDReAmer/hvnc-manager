@@ -9,10 +9,12 @@ use tokio::task::JoinSet;
 use tracing::{error, info, warn};
 
 use crate::config::ServerConfig;
-use crate::session::SessionMap;
-use crate::transport::{PeerHandle, control_loop};
+use crate::session::SessionManager;
+use crate::transport::{
+    PeerHandle, PeerId, broadcast_client_online, control_loop, send_client_list,
+};
 
-pub async fn run_quic(cfg: ServerConfig, sessions: Arc<SessionMap>) -> Result<()> {
+pub async fn run_quic(cfg: ServerConfig, sessions: Arc<SessionManager>) -> Result<()> {
     let endpoint = quinn_server(cfg.quic_addr).context("start quic server")?;
     info!("QUIC listening on {}", cfg.quic_addr);
 
@@ -34,75 +36,184 @@ pub async fn run_quic(cfg: ServerConfig, sessions: Arc<SessionMap>) -> Result<()
     Ok(())
 }
 
-async fn handle_connection(incoming: quinn::Incoming, sessions: Arc<SessionMap>) -> Result<()> {
+async fn handle_connection(incoming: quinn::Incoming, sessions: Arc<SessionManager>) -> Result<()> {
     let connection = incoming.await?;
     let remote = connection.remote_address();
     info!("QUIC peer connected: {}", remote);
 
-    // Control stream = first bi-stream
     let (send, mut recv) = connection
         .accept_bi()
         .await
         .context("accept control bi stream")?;
-
     let hello = read_hello(&mut recv).await?;
-    let side = match hello.role {
-        Role::Manager => LinkSide::Manager,
-        Role::Client => LinkSide::Client,
-        Role::Relay => {
-            warn!("Relay role not accepted from peer");
-            return Ok(());
-        }
-    };
 
-    // Register peer
-    let peer = PeerHandle::new(side, connection.clone(), send);
-    let (session_id, counterpart) = sessions
-        .register(hello.auth_token.clone(), side, Arc::clone(&peer))
-        .await;
-
-    let ack = build_ack(&hello, session_id);
-    peer.send_control(&WireMessage::HelloAck(ack)).await?;
-
-    if let Some(other) = counterpart {
-        info!(
-            "Paired session {} between {:?} and {:?}",
-            session_id, side, other.side
-        );
-    } else {
-        info!("Waiting for counterpart for token");
+    if hello.version != PROTOCOL_VERSION {
+        let ack = HelloAck {
+            accepted: false,
+            client_id: None,
+            reason: Some(format!(
+                "Version mismatch: expected {}, got {}",
+                PROTOCOL_VERSION, hello.version
+            )),
+            negotiated_version: PROTOCOL_VERSION,
+        };
+        let bytes = shared::encode_to_vec(&WireMessage::HelloAck(ack))?;
+        let mut send = send;
+        send.write_all(&bytes).await?;
+        return Ok(());
     }
 
-    // Spawn control-plane message router
-    let sessions_ctrl = Arc::clone(&sessions);
-    let peer_ctrl = Arc::clone(&peer);
-    tokio::spawn(async move {
-        if let Err(e) = control_loop(recv, peer_ctrl, session_id, sessions_ctrl).await {
-            warn!("control loop error: {e}");
+    if hello.auth_token.is_empty() {
+        let ack = HelloAck {
+            accepted: false,
+            client_id: None,
+            reason: Some("Authentication required".to_string()),
+            negotiated_version: PROTOCOL_VERSION,
+        };
+        let bytes = shared::encode_to_vec(&WireMessage::HelloAck(ack))?;
+        let mut send = send;
+        send.write_all(&bytes).await?;
+        return Ok(());
+    }
+
+    match hello.role {
+        Role::Client => handle_client_connection(connection, send, recv, hello, sessions).await,
+        Role::Manager => handle_manager_connection(connection, send, recv, hello, sessions).await,
+        Role::Relay => {
+            warn!("Relay role not accepted from peer");
+            Ok(())
         }
+    }
+}
+
+async fn handle_client_connection(
+    connection: quinn::Connection,
+    send: quinn::SendStream,
+    recv: quinn::RecvStream,
+    hello: Hello,
+    sessions: Arc<SessionManager>,
+) -> Result<()> {
+    let peer = PeerHandle::new(
+        PeerId {
+            side: LinkSide::Client,
+            id: 0,
+        },
+        connection.clone(),
+        send,
+    );
+    let client_id = sessions
+        .register_client(hello.node_name.clone(), Arc::clone(&peer))
+        .await;
+    peer.set_peer_id(PeerId {
+        side: LinkSide::Client,
+        id: client_id,
     });
 
-    // Datagram forwarding loop (for video frames)
+    let ack = HelloAck {
+        accepted: true,
+        client_id: Some(client_id),
+        reason: None,
+        negotiated_version: PROTOCOL_VERSION,
+    };
+    peer.send_control(&WireMessage::HelloAck(ack)).await?;
+
+    info!(
+        "Client '{}' registered with id {} from {}",
+        hello.node_name,
+        client_id,
+        connection.remote_address()
+    );
+    broadcast_client_online(&sessions, client_id).await;
+
     let sessions_dg = Arc::clone(&sessions);
+    let peer_for_dg = Arc::clone(&peer);
     tokio::spawn(async move {
         loop {
             match connection.read_datagram().await {
                 Ok(data) => {
-                    // Forward raw datagram to counterpart
-                    if let Some(counterpart) = sessions_dg.get_counterpart(session_id, side).await
-                        && let Err(e) = counterpart.send_datagram_raw(data) {
-                            warn!("Failed to forward datagram: {e}");
-                        }
+                    let peer_id = peer_for_dg.get_peer_id();
+                    if let Some(counterpart) = sessions_dg
+                        .get_session_counterpart(peer_id.side, peer_id.id)
+                        .await
+                        && let Err(e) = counterpart.send_datagram_raw(data)
+                    {
+                        warn!("Failed to forward datagram: {e}");
+                    }
                 }
                 Err(e) => {
-                    warn!("datagram read ended: {e}");
+                    warn!("Client datagram read ended: {e}");
                     break;
                 }
             }
         }
     });
 
-    Ok(())
+    control_loop(recv, peer, sessions).await
+}
+
+async fn handle_manager_connection(
+    connection: quinn::Connection,
+    send: quinn::SendStream,
+    recv: quinn::RecvStream,
+    hello: Hello,
+    sessions: Arc<SessionManager>,
+) -> Result<()> {
+    let peer = PeerHandle::new(
+        PeerId {
+            side: LinkSide::Manager,
+            id: 0,
+        },
+        connection.clone(),
+        send,
+    );
+    let manager_id = sessions
+        .register_manager(hello.node_name.clone(), Arc::clone(&peer))
+        .await;
+    peer.set_peer_id(PeerId {
+        side: LinkSide::Manager,
+        id: manager_id,
+    });
+
+    let ack = HelloAck {
+        accepted: true,
+        client_id: None,
+        reason: None,
+        negotiated_version: PROTOCOL_VERSION,
+    };
+    peer.send_control(&WireMessage::HelloAck(ack)).await?;
+
+    info!(
+        "Manager '{}' registered with id {} from {}",
+        hello.node_name,
+        manager_id,
+        connection.remote_address()
+    );
+    send_client_list(&peer, &sessions).await?;
+
+    let sessions_dg = Arc::clone(&sessions);
+    let peer_for_dg = Arc::clone(&peer);
+    tokio::spawn(async move {
+        loop {
+            match connection.read_datagram().await {
+                Ok(data) => {
+                    let peer_id = peer_for_dg.get_peer_id();
+                    if let Some(counterpart) = sessions_dg
+                        .get_session_counterpart(peer_id.side, peer_id.id)
+                        .await
+                        && let Err(e) = counterpart.send_datagram_raw(data)
+                    {
+                        warn!("Failed to forward datagram: {e}");
+                    }
+                }
+                Err(e) => {
+                    warn!("Manager datagram read ended: {e}");
+                    break;
+                }
+            }
+        }
+    });
+
+    control_loop(recv, peer, sessions).await
 }
 
 async fn read_hello(recv: &mut quinn::RecvStream) -> Result<Hello> {
@@ -120,27 +231,6 @@ async fn read_hello(recv: &mut quinn::RecvStream) -> Result<Hello> {
             Some(chunk) => buf.extend_from_slice(&chunk.bytes),
             None => return Err(anyhow!("stream closed before hello")),
         }
-    }
-}
-
-fn build_ack(hello: &Hello, session_id: u64) -> HelloAck {
-    if hello.version != PROTOCOL_VERSION {
-        return HelloAck {
-            accepted: false,
-            session_id: None,
-            reason: Some("version mismatch".into()),
-            negotiated_version: PROTOCOL_VERSION,
-        };
-    }
-    HelloAck {
-        accepted: true,
-        session_id: if session_id > 0 {
-            Some(session_id)
-        } else {
-            None
-        },
-        reason: None,
-        negotiated_version: PROTOCOL_VERSION,
     }
 }
 
