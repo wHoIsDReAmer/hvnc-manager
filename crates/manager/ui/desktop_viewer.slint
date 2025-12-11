@@ -1,0 +1,109 @@
+import { Theme } from "common.slint";
+import { ModernButton, StatusIndicator } from "widgets.slint";
+
+export component DesktopViewer inherits Rectangle {
+    in property <bool> connected: false;
+    in property <bool> in_session: false;
+    in property <image> desktop_image;
+    in property <string> status_text;
+    in property <string> peer_name: "";
+
+    callback disconnect_from_client();
+    callback on_mouse_move(float, float);
+    callback on_mouse_click(int, bool);
+    callback on_key_event(string, bool);
+
+    background: #0a0a0f;
+    border-radius: Theme.radius-xl;
+
+    VerticalLayout {
+        // Toolbar
+        Rectangle {
+            height: 56px;
+            background: Theme.bg-secondary;
+            border-radius: Theme.radius-xl;
+
+            HorizontalLayout {
+                padding-left: Theme.spacing-xl;
+                padding-right: Theme.spacing-xl;
+                spacing: Theme.spacing-md;
+                alignment: start;
+
+                StatusIndicator {
+                    y: (parent.height - self.height) / 2;
+                    connected: root.connected;
+                    in-session: root.in_session;
+                }
+
+                Text {
+                    text: in_session ? ("🖥️ " + peer_name) : status_text;
+                    color: Theme.text-primary;
+                    font-size: 14px;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                if in_session: ModernButton {
+                    text: "End Session";
+                    width: 120px;
+                    clicked => { disconnect_from_client(); }
+                }
+            }
+        }
+
+        // Desktop View Area
+        Rectangle {
+            vertical-stretch: 1;
+            background: #050508;
+            border-radius: Theme.radius-lg;
+            clip: true;
+
+            if !in_session: VerticalLayout {
+                alignment: center;
+                spacing: Theme.spacing-lg;
+
+                Text {
+                    text: connected ? "🎯" : "🔗";
+                    font-size: 48px;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: connected ? "Select a client to start session" : "Connect to relay server first";
+                    color: Theme.text-muted;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                }
+
+                if !connected: Text {
+                    text: "Enter your relay address and token in the sidebar";
+                    color: #4b5563;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                }
+            }
+
+            if in_session: Image {
+                source: desktop_image;
+                image-fit: contain;
+                width: 100%;
+                height: 100%;
+
+                desktop_touch := TouchArea {
+                    moved => {
+                        on_mouse_move(self.mouse-x / 1px, self.mouse-y / 1px);
+                    }
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down) {
+                            on_mouse_click(event.button == PointerEventButton.left ? 1 : 2, true);
+                        } else if (event.kind == PointerEventKind.up) {
+                            on_mouse_click(event.button == PointerEventButton.left ? 1 : 2, false);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

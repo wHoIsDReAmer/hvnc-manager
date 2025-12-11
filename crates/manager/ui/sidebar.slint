@@ -1,0 +1,167 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme, ClientEntry } from "common.slint";
+import { ModernButton, ModernInput } from "widgets.slint";
+import { ClientCard } from "client_card.slint";
+
+export component Sidebar inherits Rectangle {
+    in-out property <[ClientEntry]> clients: [];
+    in-out property <int> selected_client_id: -1;
+    in-out property <bool> connected: false;
+    in-out property <string> relay_addr;
+    in-out property <string> auth_token;
+
+    callback connect_to_relay();
+    callback disconnect_from_relay();
+    callback connect_to_client(int);
+
+    min-width: 300px;
+    background: Theme.bg-secondary;
+    border-radius: Theme.radius-xl;
+
+    VerticalLayout {
+        padding: Theme.spacing-xl;
+        spacing: Theme.spacing-xl;
+
+        // Header
+        HorizontalLayout {
+            spacing: Theme.spacing-md;
+            alignment: start;
+
+            Text {
+                text: "🔌";
+                font-size: 24px;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: "HVNC Manager";
+                    color: Theme.text-primary;
+                    font-size: 18px;
+                    font-weight: 700;
+                }
+                Text {
+                    text: connected ? "Connected" : "Disconnected";
+                    color: connected ? Theme.success : Theme.text-muted;
+                    font-size: 12px;
+                }
+            }
+        }
+
+        // Connection Panel
+        Rectangle {
+            background: Theme.bg-tertiary;
+            border-radius: Theme.radius-lg;
+            height: self.min-height;
+            
+            VerticalLayout {
+                padding: Theme.spacing-lg;
+                spacing: Theme.spacing-md;
+
+                Text {
+                    text: "CONNECTION";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    font-weight: 600;
+                    letter-spacing: 1px;
+                }
+
+                ModernInput {
+                    text <=> relay_addr;
+                    enabled: !connected;
+                    placeholder: "Relay address";
+                }
+
+                ModernInput {
+                    text <=> auth_token;
+                    enabled: !connected;
+                    password: true;
+                    placeholder: "Auth token";
+                }
+
+                ModernButton {
+                    text: connected ? "Disconnect" : "Connect";
+                    primary: !connected;
+                    clicked => {
+                        if (connected) {
+                            disconnect_from_relay();
+                        } else {
+                            connect_to_relay();
+                        }
+                    }
+                }
+            }
+        }
+
+        // Clients Section
+        VerticalLayout {
+            spacing: Theme.spacing-md;
+            vertical-stretch: 1;
+
+            HorizontalLayout {
+                alignment: space-between;
+
+                Text {
+                    text: "CLIENTS";
+                    color: Theme.text-secondary;
+                    font-size: 11px;
+                    font-weight: 600;
+                    letter-spacing: 1px;
+                }
+
+                Rectangle {
+                    width: 24px;
+                    height: 18px;
+                    border-radius: 9px;
+                    background: Theme.bg-hover;
+
+                    Text {
+                        text: clients.length;
+                        color: Theme.text-primary;
+                        font-size: 11px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            if clients.length == 0: Rectangle {
+                vertical-stretch: 1;
+                
+                VerticalLayout {
+                    alignment: center;
+                    spacing: Theme.spacing-sm;
+
+                    Text {
+                        text: "📭";
+                        font-size: 32px;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: connected ? "No clients online" : "Connect to see clients";
+                        color: Theme.text-muted;
+                        font-size: 13px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+
+            if clients.length > 0: ScrollView {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    spacing: Theme.spacing-sm;
+                    alignment: start;
+
+                    for client in clients: ClientCard {
+                        client: client;
+                        selected: client.client_id == selected_client_id;
+                        clicked => { connect_to_client(client.client_id); }
+                    }
+                }
+            }
+        }
+    }
+}

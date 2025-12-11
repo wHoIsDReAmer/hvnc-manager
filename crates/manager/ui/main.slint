@@ -1,0 +1,59 @@
+import { Theme, ClientEntry } from "common.slint";
+import { Sidebar } from "sidebar.slint";
+import { DesktopViewer } from "desktop_viewer.slint";
+
+export { ClientEntry }
+
+export component MainWindow inherits Window {
+    title: "HVNC Manager";
+    min-width: 1024px;
+    min-height: 680px;
+    background: Theme.bg-primary;
+
+    in-out property <[ClientEntry]> clients: [];
+    in-out property <int> selected_client_id: -1;
+    in-out property <bool> connected: false;
+    in-out property <bool> in_session: false;
+    in-out property <image> desktop_image;
+    in-out property <string> status_text: "Disconnected";
+    in-out property <string> relay_addr: "127.0.0.1:4433";
+    in-out property <string> auth_token: "dev-token";
+    in-out property <string> peer_name: "";
+
+    callback connect_to_relay();
+    callback disconnect_from_relay();
+    callback connect_to_client(int);
+    callback disconnect_from_client();
+    callback on_mouse_move(float, float);
+    callback on_mouse_click(int, bool);
+    callback on_key_event(string, bool);
+
+    HorizontalLayout {
+        padding: Theme.spacing-lg;
+        spacing: Theme.spacing-lg;
+
+        Sidebar {
+            clients: root.clients;
+            selected_client_id: root.selected_client_id;
+            connected: root.connected;
+            relay_addr <=> root.relay_addr;
+            auth_token <=> root.auth_token;
+            connect_to_relay => { root.connect_to_relay(); }
+            disconnect_from_relay => { root.disconnect_from_relay(); }
+            connect_to_client(id) => { root.connect_to_client(id); }
+        }
+
+        DesktopViewer {
+            horizontal-stretch: 1;
+            connected: root.connected;
+            in_session: root.in_session;
+            desktop_image: root.desktop_image;
+            status_text: root.status_text;
+            peer_name: root.peer_name;
+            disconnect_from_client => { root.disconnect_from_client(); }
+            on_mouse_move(x, y) => { root.on_mouse_move(x, y); }
+            on_mouse_click(btn, down) => { root.on_mouse_click(btn, down); }
+            on_key_event(key, down) => { root.on_key_event(key, down); }
+        }
+    }
+}

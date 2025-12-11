@@ -1,0 +1,33 @@
+// Common types and exports
+export struct ClientEntry {
+    client_id: int,
+    node_name: string,
+    is_busy: bool,
+}
+
+export global Theme {
+    // Colors
+    out property <color> bg-primary: #030712;
+    out property <color> bg-secondary: #111827;
+    out property <color> bg-tertiary: #1f2937;
+    out property <color> bg-hover: #374151;
+    out property <color> accent: #6366f1;
+    out property <color> accent-hover: #4f46e5;
+    out property <color> text-primary: white;
+    out property <color> text-secondary: #9ca3af;
+    out property <color> text-muted: #6b7280;
+    out property <color> border: #374151;
+    out property <color> success: #22c55e;
+    out property <color> warning: #eab308;
+    out property <color> error: #ef4444;
+
+    // Sizing
+    out property <length> radius-sm: 8px;
+    out property <length> radius-md: 10px;
+    out property <length> radius-lg: 12px;
+    out property <length> radius-xl: 16px;
+    out property <length> spacing-sm: 8px;
+    out property <length> spacing-md: 12px;
+    out property <length> spacing-lg: 16px;
+    out property <length> spacing-xl: 20px;
+}

@@ -1,0 +1,80 @@
+import { Theme, ClientEntry } from "common.slint";
+
+export component ClientCard inherits Rectangle {
+    in property <ClientEntry> client;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 64px;
+    border-radius: Theme.radius-lg;
+    background: selected ? #312e81 : (touch.has-hover ? #1e1b4b : transparent);
+    border-width: selected ? 1px : 0px;
+    border-color: Theme.accent;
+
+    animate background { duration: 200ms; }
+    animate border-width { duration: 150ms; }
+
+    touch := TouchArea {
+        enabled: !client.is_busy;
+        clicked => { root.clicked(); }
+        mouse-cursor: client.is_busy ? not-allowed : pointer;
+    }
+
+    HorizontalLayout {
+        padding: Theme.spacing-md;
+        spacing: Theme.spacing-md;
+        alignment: start;
+
+        Rectangle {
+            width: 40px;
+            height: 40px;
+            border-radius: Theme.radius-md;
+            background: client.is_busy ? #7c3aed : #1e40af;
+
+            Text {
+                text: "💻";
+                font-size: 20px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 4px;
+
+            Text {
+                text: client.node_name;
+                color: Theme.text-primary;
+                font-size: 14px;
+                font-weight: 600;
+                overflow: elide;
+            }
+
+            HorizontalLayout {
+                spacing: Theme.spacing-sm;
+                alignment: start;
+
+                Text {
+                    text: "ID: " + client.client_id;
+                    color: Theme.text-secondary;
+                    font-size: 12px;
+                }
+
+                Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    y: (parent.height - self.height) / 2;
+                    background: client.is_busy ? Theme.warning : Theme.success;
+                }
+
+                Text {
+                    text: client.is_busy ? "In use" : "Available";
+                    color: client.is_busy ? Theme.warning : Theme.success;
+                    font-size: 12px;
+                }
+            }
+        }
+    }
+}

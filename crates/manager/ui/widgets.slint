@@ -1,0 +1,79 @@
+import { Theme } from "common.slint";
+
+export component ModernButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <bool> primary: false;
+    callback clicked();
+
+    height: 40px;
+    border-radius: Theme.radius-md;
+    background: !enabled ? Theme.bg-hover : 
+                primary ? (touch.has-hover ? Theme.accent-hover : Theme.accent) : 
+                (touch.has-hover ? Theme.bg-hover : Theme.bg-tertiary);
+    border-width: primary ? 0px : 1px;
+    border-color: Theme.border;
+    opacity: enabled ? 1.0 : 0.5;
+
+    animate background { duration: 150ms; }
+    animate opacity { duration: 150ms; }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+        mouse-cursor: enabled ? pointer : default;
+    }
+
+    Text {
+        text: root.text;
+        color: enabled ? Theme.text-primary : Theme.text-secondary;
+        font-size: 14px;
+        font-weight: 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component ModernInput inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <bool> enabled: true;
+    in property <bool> password: false;
+    in property <string> placeholder: "";
+
+    height: 44px;
+    border-radius: Theme.radius-md;
+    background: Theme.bg-tertiary;
+    border-width: input.has-focus ? 2px : 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.border;
+
+    animate border-color { duration: 150ms; }
+    animate border-width { duration: 150ms; }
+
+    input := TextInput {
+        x: 14px;
+        width: parent.width - 28px;
+        vertical-alignment: center;
+        color: Theme.text-primary;
+        font-size: 14px;
+        input-type: password ? InputType.password : InputType.text;
+        enabled: root.enabled;
+    }
+
+    if text == "" && !input.has-focus: Text {
+        x: 14px;
+        text: placeholder;
+        color: Theme.text-muted;
+        font-size: 14px;
+        vertical-alignment: center;
+    }
+}
+
+export component StatusIndicator inherits Rectangle {
+    in property <bool> connected: false;
+    in property <bool> in-session: false;
+
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background: connected ? (in-session ? Theme.success : Theme.warning) : Theme.error;
+}
